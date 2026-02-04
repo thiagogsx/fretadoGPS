@@ -58,8 +58,8 @@
     
     <div class="top-bar">
         <select id="lineSelector" onchange="mudarLinha()">
-            <option value="linha1">Linha 1: Jundiaí/ Várzea/ Campo Limpo</option>
             <option value="linha2">Linha 2: São Paulo (Barra Funda)</option>
+            <option value="linha1">Linha 1: Jundiaí/ Várzea/ Campo Limpo</option>
             <option value="linha3">Linha 3: Francisco Morato</option>
         </select>
     </div>
@@ -68,7 +68,7 @@
 
     <div id="infoCard" class="info-card offline-border">
         <div class="bus-info">
-            <h2 id="busTitle">Linha 1</h2>
+            <h2 id="busTitle">Linha 2</h2>
             <p>Velocidade: <span id="speedVal" style="color:white; font-weight:bold;">0</span> km/h</p>
             <p style="font-size: 0.75rem; color: #777;">Atualizado há: <span id="lastUpdate">...</span>s</p>
         </div>
@@ -94,7 +94,9 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        const map = L.map('map', { zoomControl: false }).setView([-23.1857, -46.8978], 12);
+        // Centraliza inicialmente perto da rota de teste
+        const map = L.map('map', { zoomControl: false }).setView([-23.35, -46.80], 10);
+        
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
         }).addTo(map);
@@ -102,10 +104,31 @@
         const busSvgHtml = `<svg class="bus-svg" width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 16C4 16.88 4.39 17.67 5 18.22V20C5 20.55 5.45 21 6 21H7C7.55 21 8 20.55 8 20V19H16V20C16 20.55 16.45 21 17 21H18C18.55 21 19 20.55 19 20V18.22C19.61 17.67 20 16.88 20 16V6C20 2.5 16.42 2 12 2C7.58 2 4 2.5 4 6V16ZM7.5 17C6.67 17 6 16.33 6 15.5C6 14.67 6.67 14 7.5 14C8.33 14 9 14.67 9 15.5C9 16.33 8.33 17 7.5 17ZM16.5 17C15.67 17 15 16.33 15 15.5C15 14.67 15.67 14 16.5 14C17.33 14 18 14.67 18 15.5C18 16.33 17.33 17 16.5 17ZM5 6H19V11H5V6Z" fill="#E1F000"/></svg>`;
         const busIcon = L.divIcon({ className: 'bus-icon-marker', html: busSvgHtml, iconSize: [40, 40], iconAnchor: [20, 20] });
         
+        // --- ROTAS DO TESTE ---
+        const rotasFixas = {
+            "linha2": [ // Barra Funda -> Destino do Teste (-23.1638, -46.9998)
+                [-23.5244, -46.6672], // Origem: Terminal Barra Funda
+                [-23.4800, -46.7300], // (Ponto Curva 1: Marginal/Anhanguera)
+                [-23.2300, -46.9000], // (Ponto Curva 2: Bandeirantes região Jundiaí)
+                [-23.163848, -46.999899] // Destino Final (Seu endereço de teste)
+            ],
+            "linha1": [ 
+                [-23.1857, -46.8978], 
+                [-23.2100, -46.8300], 
+                [-23.2050, -46.7840]  
+            ],
+            "linha3": [ 
+                [-23.1857, -46.8978],
+                [-23.2820, -46.7450] 
+            ]
+        };
+
         let busMarker = null;
         let currentRef = null;
+        let rotaPolyline = null; 
+        let tracePolyline = null;
+        let tracePath = []; 
 
-        // Elementos UI
         const statusBadge = document.getElementById('statusBadge');
         const infoCard = document.getElementById('infoCard');
         const speedVal = document.getElementById('speedVal');
@@ -119,15 +142,30 @@
 
             if (currentRef) currentRef.off();
             if (busMarker) { map.removeLayer(busMarker); busMarker = null; }
+            if (rotaPolyline) { map.removeLayer(rotaPolyline); rotaPolyline = null; }
+            if (tracePolyline) { map.removeLayer(tracePolyline); tracePolyline = null; }
+            tracePath = []; 
+
+            // 1. DESENHA ROTA FIXA
+            if (rotasFixas[novaLinhaId]) {
+                rotaPolyline = L.polyline(rotasFixas[novaLinhaId], {
+                    color: 'gray', dashArray: '5, 10', weight: 3, opacity: 0.5
+                }).addTo(map);
+                map.fitBounds(rotaPolyline.getBounds(), {padding: [50, 50]});
+            }
+
+            // 2. PREPARA RASTRO
+            tracePolyline = L.polyline([], {
+                color: '#E1F000', weight: 5, opacity: 0.9
+            }).addTo(map);
             
-            // Reseta visual para Offline
             setOffline();
             monitorarOnibus(novaLinhaId);
         }
 
         function setOffline() {
             statusBadge.textContent = "OFFLINE";
-            statusBadge.style.backgroundColor = "#666"; // Cinza
+            statusBadge.style.backgroundColor = "#666"; 
             infoCard.classList.remove('online-border');
             infoCard.classList.add('offline-border');
             speedVal.textContent = "0";
@@ -135,7 +173,7 @@
 
         function setOnline() {
             statusBadge.textContent = "ONLINE";
-            statusBadge.style.backgroundColor = "#E1F000"; // Lime
+            statusBadge.style.backgroundColor = "#E1F000"; 
             infoCard.classList.add('online-border');
             infoCard.classList.remove('offline-border');
         }
@@ -152,11 +190,8 @@
                     const lat = parseFloat(data.lat);
                     const lng = parseFloat(data.lng);
                     const speed = data.velocidade;
-                    
-                    // Lógica de tempo: Se mais de 30s sem sinal, considera Offline
                     const secondsAgo = Math.floor((Date.now() - data.ultimaAtualizacao) / 1000);
                     
-                    // Verifica status explícito OU tempo limite (30s)
                     if (data.status === 'offline' || secondsAgo > 30) {
                         setOffline();
                     } else {
@@ -168,6 +203,11 @@
                         busMarker = L.marker(newLatLng, {icon: busIcon}).addTo(map);
                     } else {
                         busMarker.setLatLng(newLatLng);
+                    }
+                    
+                    if (secondsAgo <= 30) {
+                        tracePath.push(newLatLng);
+                        tracePolyline.setLatLngs(tracePath);
                     }
                     map.panTo(newLatLng); 
 
