@@ -18,10 +18,11 @@
         select {
             width: 100%; padding: 12px 20px; border-radius: 30px;
             border: 2px solid var(--brand-color); background-color: var(--card-bg);
-            color: white; font-size: 1rem; font-weight: bold; appearance: none;
+            color: white; font-size: 0.9rem; font-weight: bold; appearance: none;
             background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23E1F000'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
             background-repeat: no-repeat; background-position: right 15px center; background-size: 20px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.5); outline: none;
+            text-overflow: ellipsis; /* Corta texto muito longo */
         }
         .info-card {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
@@ -51,9 +52,9 @@
     
     <div class="top-bar">
         <select id="lineSelector" onchange="mudarLinha()">
-            <option value="linha_jundiai">Linha Jundiaí</option>
-            <option value="linha_barra_funda">Linha Barra Funda</option>
-            <option value="linha_campo_limpo">Campo Limpo Paulista</option>
+            <option value="linha1">Linha 1: Jundiaí/ Várzea/ Campo Limpo</option>
+            <option value="linha2">Linha 2: São Paulo (Barra Funda)</option>
+            <option value="linha3">Linha 3: Francisco Morato</option>
         </select>
     </div>
 
@@ -61,7 +62,7 @@
 
     <div class="info-card">
         <div class="bus-info">
-            <h2 id="busTitle">Linha Jundiaí</h2>
+            <h2 id="busTitle">Linha 1</h2>
             <p>Velocidade: <span id="speedVal" style="color:white; font-weight:bold;">0</span> km/h</p>
             <p style="font-size: 0.75rem; color: #777;">Atualizado há: <span id="lastUpdate">...</span>s</p>
         </div>
@@ -87,8 +88,8 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        // Inicia o mapa centralizado em SP (Jundiaí)
-        const map = L.map('map', { zoomControl: false }).setView([-23.1857, -46.8978], 14);
+        // Mapa centralizado (ajustado para visão geral)
+        const map = L.map('map', { zoomControl: false }).setView([-23.1857, -46.8978], 12);
         
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
@@ -105,12 +106,12 @@
             const novaLinhaId = selector.value;
             const nomeLinha = selector.options[selector.selectedIndex].text;
 
-            document.getElementById('busTitle').innerText = nomeLinha; // Atualiza título do card
+            // Pega apenas "Linha 1", "Linha 2" para o título (corta antes dos dois pontos)
+            document.getElementById('busTitle').innerText = nomeLinha.split(":")[0]; 
 
             if (currentRef) currentRef.off();
             if (busMarker) { map.removeLayer(busMarker); busMarker = null; }
             
-            // Zera informações
             document.getElementById('speedVal').innerText = "0";
             document.getElementById('lastUpdate').innerText = "...";
             
@@ -136,8 +137,6 @@
                     } else {
                         busMarker.setLatLng(newLatLng);
                     }
-
-                    // --- 2. FORÇA CENTRALIZAÇÃO DO MAPA SEMPRE ---
                     map.panTo(newLatLng); 
 
                     document.getElementById('speedVal').innerText = speed;
@@ -146,7 +145,6 @@
             });
         }
         
-        // Inicia
         mudarLinha();
     </script>
 </body>
