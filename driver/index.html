@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Innomotics Driver GPS</title>
+    <title>Motorista - Innomotics</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -11,6 +11,7 @@
             --brand-color: #E1F000;
             --text-color: #FFFFFF;
             --card-bg: #2C2C2C;
+            --danger-color: #FF4444;
         }
         body {
             background-color: var(--bg-color);
@@ -20,8 +21,6 @@
             align-items: center; justify-content: center;
             height: 100vh; text-align: center;
         }
-        h1 { margin-bottom: 5px; font-size: 1.5rem; }
-        p { color: #A0A0A0; margin-top: 0; }
         .card {
             background-color: var(--card-bg); padding: 20px;
             border-radius: 15px; width: 85%; max-width: 400px;
@@ -47,49 +46,54 @@
             background-color: var(--brand-color); color: #000;
             font-weight: bold; font-size: 1.2rem; padding: 15px 30px;
             border: none; border-radius: 50px; cursor: pointer; width: 100%;
-            transition: transform 0.2s;
         }
-        button:active { transform: scale(0.95); }
-        button.stop { background-color: #ff4444; color: white; }
-        .pulse {
-            width: 15px; height: 15px; background-color: var(--brand-color);
-            border-radius: 50%; display: inline-block; margin-right: 10px;
-            visibility: hidden;
-            animation: pulse-animation 2s infinite;
+        button.stop { background-color: var(--danger-color); color: white; }
+        
+        /* NOVO: Aviso de Segurança */
+        .warning-msg {
+            background-color: rgba(255, 68, 68, 0.15);
+            border: 1px solid var(--danger-color);
+            color: #ff8888;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-top: 15px;
+            display: none; /* Aparece só quando inicia */
         }
-        .active .pulse { visibility: visible; }
-        @keyframes pulse-animation {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(225, 240, 0, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(225, 240, 0, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(225, 240, 0, 0); }
-        }
+        .warning-icon { margin-right: 5px; font-weight: bold; }
+
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>Innomotics Bus Tracker</h1>
-        <p>Painel do Motorista</p>
+        <h1>Painel do Motorista</h1>
+        <p>Selecione sua rota:</p>
+        
         <select id="busId">
-            <option value="fretado01">Rota 01 - Fábrica Jundiaí</option>
-            <option value="fretado02">Rota 02 - Centro</option>
-            <option value="fretado03">Rota 03 - Várzea</option>
+            <option value="linha_jundiai">Linha Jundiaí</option>
+            <option value="linha_barra_funda">Linha Barra Funda</option>
+            <option value="linha_campo_limpo">Campo Limpo Paulista</option>
         </select>
+
         <div id="statusBox" class="status-box">
-            <div style="display:flex; align-items:center; justify-content:center; margin-bottom:10px;">
-                <span class="pulse"></span>
-                <span id="statusText">Aguardando início...</span>
-            </div>
+            <span id="statusText">Aguardando início...</span>
             <span class="speed" id="speedDisplay">0</span>
             <span style="font-size:0.8rem; color:#888;">km/h</span>
         </div>
+
         <button id="actionBtn" onclick="toggleTracking()">INICIAR VIAGEM</button>
+
+        <div id="warningBox" class="warning-msg">
+            <span class="warning-icon">⚠️</span> 
+            ATENÇÃO: Mantenha esta tela aberta e o celular no painel para o GPS funcionar.
+        </div>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <script>
-        // --- SUAS CHAVES ATUALIZADAS ---
+        // --- SUAS CHAVES (Mantenha as mesmas que já funcionam) ---
         const firebaseConfig = {
           apiKey: "AIzaSyBFCEI_QYYWA7U4fEt0f6H0CYJMTVdVxlo",
           authDomain: "fretado-27e4a.firebaseapp.com",
@@ -113,20 +117,34 @@
         const speedDisplay = document.getElementById('speedDisplay');
         const actionBtn = document.getElementById('actionBtn');
         const busSelector = document.getElementById('busId');
+        const warningBox = document.getElementById('warningBox');
+
+        // Função Wake Lock (Trava Tela) Reforçada
+        async function requestWakeLock() {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => { requestWakeLock(); });
+            } catch (err) { console.log('Erro WakeLock:', err); }
+        }
 
         async function toggleTracking() {
             if (!isTracking) {
+                // INICIAR
                 startGPS();
                 await requestWakeLock();
+                
                 isTracking = true;
                 actionBtn.textContent = "ENCERRAR VIAGEM";
                 actionBtn.classList.add('stop');
                 statusBox.classList.add('active');
                 statusText.textContent = "Transmitindo GPS...";
                 busSelector.disabled = true;
+                warningBox.style.display = "block"; // Mostra o aviso
             } else {
+                // PARAR
                 navigator.geolocation.clearWatch(watchId);
                 if (wakeLock) wakeLock.release();
+                
                 isTracking = false;
                 actionBtn.textContent = "INICIAR VIAGEM";
                 actionBtn.classList.remove('stop');
@@ -134,13 +152,12 @@
                 statusText.textContent = "Viagem encerrada.";
                 speedDisplay.textContent = "0";
                 busSelector.disabled = false;
+                warningBox.style.display = "none"; // Esconde o aviso
             }
         }
 
         function startGPS() {
-            if (!navigator.geolocation) { alert("Seu navegador não suporta GPS!"); return; }
-            const options = { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 };
-
+            if (!navigator.geolocation) return;
             watchId = navigator.geolocation.watchPosition(
                 (position) => {
                     const lat = position.coords.latitude;
@@ -154,17 +171,11 @@
                         ultimaAtualizacao: Date.now()
                     });
                 },
-                (error) => { console.error("Erro GPS:", error); statusText.textContent = "Buscando sinal..."; },
-                options
+                (err) => console.log(err),
+                { enableHighAccuracy: true, timeout: 5000 }
             );
         }
-
-        async function requestWakeLock() {
-            try {
-                wakeLock = await navigator.wakeLock.request('screen');
-                wakeLock.addEventListener('release', () => console.log('Wake Lock soltou'));
-            } catch (err) { console.log(`Erro Wake Lock: ${err.name}, ${err.message}`); }
-        }
+        
         document.addEventListener('visibilitychange', async () => {
             if (wakeLock !== null && document.visibilityState === 'visible') await requestWakeLock();
         });
