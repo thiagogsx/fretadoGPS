@@ -8,17 +8,17 @@
     <style>
         :root {
             --bg-color: #1A1A1A;
-            --brand-color: #E1F000;
+            --brand-color: #E1F000; /* Lime */
+            --danger-color: #FF4444; /* Red */
+            --offline-color: #666666; /* Grey */
+            --warning-color: #FFAA00; /* Orange */
             --text-color: #FFFFFF;
             --card-bg: #2C2C2C;
-            --danger-color: #FF4444;
         }
         body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: 'Roboto', sans-serif;
-            margin: 0; display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
+            background-color: var(--bg-color); color: var(--text-color);
+            font-family: 'Roboto', sans-serif; margin: 0; display: flex; 
+            flex-direction: column; align-items: center; justify-content: center;
             height: 100vh; text-align: center;
         }
         .card {
@@ -27,38 +27,46 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.5); margin-bottom: 20px;
         }
         select {
-            width: 100%; padding: 15px; margin: 10px 0;
-            border-radius: 8px; border: none; background: #444;
-            color: white; font-size: 1rem; box-sizing: border-box;
+            width: 100%; padding: 15px; margin: 10px 0; border-radius: 8px; 
+            border: none; background: #444; color: white; font-size: 1rem;
         }
+        /* CAIXA DE STATUS INTELIGENTE */
         .status-box {
             margin: 20px 0; padding: 15px; border: 2px solid #444;
             border-radius: 10px; transition: all 0.3s;
         }
-        .status-box.active {
+        .status-box.online {
             border-color: var(--brand-color);
             background-color: rgba(225, 240, 0, 0.1);
         }
-        .speed {
-            font-size: 3rem; font-weight: bold; color: var(--brand-color); display: block;
+        .status-box.offline {
+            border-color: var(--offline-color);
+            background-color: rgba(100, 100, 100, 0.1);
         }
+        .status-box.no-signal {
+            border-color: var(--warning-color);
+            background-color: rgba(255, 170, 0, 0.15);
+        }
+        
+        .speed { font-size: 3rem; font-weight: bold; color: white; display: block; }
+        .status-badge {
+            display: inline-block; padding: 5px 12px; border-radius: 20px;
+            font-weight: bold; font-size: 0.8rem; margin-bottom: 10px;
+            text-transform: uppercase; color: #000;
+        }
+
         button {
             background-color: var(--brand-color); color: #000;
             font-weight: bold; font-size: 1.2rem; padding: 15px 30px;
             border: none; border-radius: 50px; cursor: pointer; width: 100%;
         }
         button.stop { background-color: var(--danger-color); color: white; }
+        
         .warning-msg {
-            background-color: rgba(255, 68, 68, 0.15);
-            border: 1px solid var(--danger-color);
-            color: #ff8888;
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            margin-top: 15px;
-            display: none;
+            background-color: rgba(255, 68, 68, 0.15); border: 1px solid var(--danger-color);
+            color: #ff8888; padding: 10px; border-radius: 8px; font-size: 0.9rem;
+            margin-top: 15px; display: none;
         }
-        .warning-icon { margin-right: 5px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -72,17 +80,19 @@
             <option value="linha3">Linha 3: Francisco Morato</option>
         </select>
 
-        <div id="statusBox" class="status-box">
-            <span id="statusText">Aguardando início...</span>
-            <span class="speed" id="speedDisplay">0</span>
-            <span style="font-size:0.8rem; color:#888;">km/h</span>
+        <div id="statusBox" class="status-box offline">
+            <div id="statusBadge" class="status-badge" style="background-color: #666;">OFFLINE</div>
+            <div>
+                <span class="speed" id="speedDisplay" style="color:#888;">0</span>
+                <span style="font-size:0.8rem; color:#888;">km/h</span>
+            </div>
+            <div id="connectionText" style="font-size:0.8rem; margin-top:5px; color:#aaa;">Toque em Iniciar</div>
         </div>
 
         <button id="actionBtn" onclick="toggleTracking()">INICIAR VIAGEM</button>
 
         <div id="warningBox" class="warning-msg">
-            <span class="warning-icon">⚠️</span> 
-            ATENÇÃO: Mantenha esta tela aberta e o celular no painel.
+            ⚠️ Mantenha esta tela aberta e o celular no painel.
         </div>
     </div>
 
@@ -90,7 +100,6 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <script>
-        // MANTENHA SUAS CHAVES AQUI
         const firebaseConfig = {
           apiKey: "AIzaSyBFCEI_QYYWA7U4fEt0f6H0CYJMTVdVxlo",
           authDomain: "fretado-27e4a.firebaseapp.com",
@@ -108,13 +117,62 @@
         let watchId = null;
         let wakeLock = null;
         let isTracking = false;
+        let isConnected = false;
 
         const statusBox = document.getElementById('statusBox');
-        const statusText = document.getElementById('statusText');
+        const statusBadge = document.getElementById('statusBadge');
         const speedDisplay = document.getElementById('speedDisplay');
+        const connectionText = document.getElementById('connectionText');
         const actionBtn = document.getElementById('actionBtn');
         const busSelector = document.getElementById('busId');
         const warningBox = document.getElementById('warningBox');
+
+        // --- MONITOR DE CONEXÃO (NOVIDADE) ---
+        const connectedRef = database.ref(".info/connected");
+        connectedRef.on("value", (snap) => {
+            isConnected = snap.val();
+            updateInterface();
+        });
+
+        function updateInterface() {
+            // Remove todas as classes primeiro
+            statusBox.classList.remove('online', 'offline', 'no-signal');
+            
+            if (!isTracking) {
+                // ESTADO: DESLIGADO
+                statusBox.classList.add('offline');
+                statusBadge.textContent = "OFFLINE";
+                statusBadge.style.backgroundColor = "#666";
+                speedDisplay.style.color = "#888";
+                connectionText.textContent = "Viagem encerrada";
+                actionBtn.textContent = "INICIAR VIAGEM";
+                actionBtn.classList.remove('stop');
+                busSelector.disabled = false;
+                warningBox.style.display = "none";
+            } 
+            else if (isTracking && !isConnected) {
+                // ESTADO: LIGADO MAS SEM INTERNET
+                statusBox.classList.add('no-signal');
+                statusBadge.textContent = "SEM SINAL";
+                statusBadge.style.backgroundColor = "#FFAA00"; // Laranja
+                speedDisplay.style.color = "#FFF";
+                connectionText.textContent = "Tentando reconectar à internet...";
+                actionBtn.textContent = "ENCERRAR VIAGEM";
+                actionBtn.classList.add('stop');
+            }
+            else {
+                // ESTADO: ONLINE E TRANSMITINDO
+                statusBox.classList.add('online');
+                statusBadge.textContent = "ONLINE";
+                statusBadge.style.backgroundColor = "#E1F000"; // Lime
+                speedDisplay.style.color = "#E1F000";
+                connectionText.textContent = "Transmitindo localização GPS";
+                actionBtn.textContent = "ENCERRAR VIAGEM";
+                actionBtn.classList.add('stop');
+                busSelector.disabled = true;
+                warningBox.style.display = "block";
+            }
+        }
 
         async function requestWakeLock() {
             try {
@@ -128,42 +186,44 @@
                 startGPS();
                 await requestWakeLock();
                 isTracking = true;
-                actionBtn.textContent = "ENCERRAR VIAGEM";
-                actionBtn.classList.add('stop');
-                statusBox.classList.add('active');
-                statusText.textContent = "Transmitindo GPS...";
-                busSelector.disabled = true;
-                warningBox.style.display = "block";
             } else {
                 navigator.geolocation.clearWatch(watchId);
                 if (wakeLock) wakeLock.release();
                 isTracking = false;
-                actionBtn.textContent = "INICIAR VIAGEM";
-                actionBtn.classList.remove('stop');
-                statusBox.classList.remove('active');
-                statusText.textContent = "Viagem encerrada.";
-                speedDisplay.textContent = "0";
-                busSelector.disabled = false;
-                warningBox.style.display = "none";
+                
+                // Avisa o banco que ficou offline antes de fechar
+                if (isConnected) {
+                     database.ref('frota/' + busSelector.value + '/status').set('offline');
+                }
             }
+            updateInterface();
         }
 
         function startGPS() {
             if (!navigator.geolocation) return;
             watchId = navigator.geolocation.watchPosition(
                 (position) => {
+                    if (!isTracking) return; // Segurança extra
+
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
                     const speed = position.coords.speed ? (position.coords.speed * 3.6).toFixed(0) : 0;
+                    
                     speedDisplay.textContent = speed;
+                    
                     database.ref('frota/' + busSelector.value).set({
-                        lat: lat, lng: lng, velocidade: parseInt(speed), ultimaAtualizacao: Date.now()
+                        lat: lat, 
+                        lng: lng, 
+                        velocidade: parseInt(speed), 
+                        ultimaAtualizacao: Date.now(),
+                        status: 'online' // Marca que está vivo
                     });
                 },
                 (err) => console.log(err),
                 { enableHighAccuracy: true, timeout: 5000 }
             );
         }
+        
         document.addEventListener('visibilitychange', async () => {
             if (wakeLock !== null && document.visibilityState === 'visible') await requestWakeLock();
         });
