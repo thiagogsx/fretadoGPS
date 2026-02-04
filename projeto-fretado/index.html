@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Innomotics - Fretado (OSM)</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg-color: #1A1A1A; --brand-color: #E1F000; --card-bg: #2C2C2C; }
+        body { margin: 0; padding: 0; font-family: 'Roboto', sans-serif; overflow: hidden; background: var(--bg-color); }
+        #map { height: 100vh; width: 100%; z-index: 1; }
+        
+        .top-bar {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 400px; z-index: 1000;
+        }
+        select {
+            width: 100%; padding: 12px 20px; border-radius: 30px;
+            border: 2px solid var(--brand-color); background-color: var(--card-bg);
+            color: white; font-size: 1rem; font-weight: bold; appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23E1F000'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+            background-repeat: no-repeat; background-position: right 15px center; background-size: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); outline: none;
+        }
+        .info-card {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 400px; background-color: var(--card-bg); color: white;
+            padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 4px solid var(--brand-color); z-index: 1000;
+        }
+        .bus-info h2 { margin: 0; font-size: 1.2rem; }
+        .bus-info p { margin: 5px 0 0; color: #aaa; font-size: 0.9rem; }
+        .status-badge {
+            background-color: var(--brand-color); color: black; padding: 5px 10px;
+            border-radius: 20px; font-weight: bold; font-size: 0.8rem; text-transform: uppercase;
+        }
+        .loading-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-color); display: flex; justify-content: center;
+            align-items: center; z-index: 2000; color: var(--brand-color);
+            font-weight: bold; transition: opacity 0.5s;
+        }
+        .bus-icon-marker { background: transparent; border: none; }
+        .bus-svg { filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.5)); transition: transform 0.5s linear; }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading-overlay">CARREGANDO MAPA...</div>
+    <div class="top-bar">
+        <select id="lineSelector" onchange="mudarLinha()">
+            <option value="fretado01">Rota 01 - Fábrica Jundiaí</option>
+            <option value="fretado02">Rota 02 - Centro</option>
+            <option value="fretado03">Rota 03 - Várzea</option>
+        </select>
+    </div>
+    <div id="map"></div>
+    <div class="info-card">
+        <div class="bus-info">
+            <h2 id="busTitle">Fretado 01</h2>
+            <p>Velocidade: <span id="speedVal" style="color:white; font-weight:bold;">0</span> km/h</p>
+            <p style="font-size: 0.75rem; color: #777;">Atualizado há: <span id="lastUpdate">...</span>s</p>
+        </div>
+        <div class="status-badge">ONLINE</div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+    <script>
+        // --- SUAS CHAVES ATUALIZADAS ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyBFCEI_QYYWA7U4fEt0f6H0CYJMTVdVxlo",
+          authDomain: "fretado-27e4a.firebaseapp.com",
+          databaseURL: "https://fretado-27e4a-default-rtdb.firebaseio.com",
+          projectId: "fretado-27e4a",
+          storageBucket: "fretado-27e4a.firebasestorage.app",
+          messagingSenderId: "886662004445",
+          appId: "1:886662004445:web:b128a19293755d1082e534",
+          measurementId: "G-7VJEQHDHJF"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        const map = L.map('map', { zoomControl: false }).setView([-23.1857, -46.8978], 14);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+        }).addTo(map);
+
+        const busSvgHtml = `<svg class="bus-svg" width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 16C4 16.88 4.39 17.67 5 18.22V20C5 20.55 5.45 21 6 21H7C7.55 21 8 20.55 8 20V19H16V20C16 20.55 16.45 21 17 21H18C18.55 21 19 20.55 19 20V18.22C19.61 17.67 20 16.88 20 16V6C20 2.5 16.42 2 12 2C7.58 2 4 2.5 4 6V16ZM7.5 17C6.67 17 6 16.33 6 15.5C6 14.67 6.67 14 7.5 14C8.33 14 9 14.67 9 15.5C9 16.33 8.33 17 7.5 17ZM16.5 17C15.67 17 15 16.33 15 15.5C15 14.67 15.67 14 16.5 14C17.33 14 18 14.67 18 15.5C18 16.33 17.33 17 16.5 17ZM5 6H19V11H5V6Z" fill="#E1F000"/></svg>`;
+        const busIcon = L.divIcon({ className: 'bus-icon-marker', html: busSvgHtml, iconSize: [40, 40], iconAnchor: [20, 20] });
+        
+        let busMarker = null;
+        let currentRef = null;
+
+        function mudarLinha() {
+            const selector = document.getElementById('lineSelector');
+            const novaLinhaId = selector.value;
+            const nomeLinha = selector.options[selector.selectedIndex].text;
+
+            document.getElementById('busTitle').innerText = nomeLinha.split(" - ")[0];
+            if (currentRef) currentRef.off();
+            if (busMarker) { map.removeLayer(busMarker); busMarker = null; }
+            document.getElementById('speedVal').innerText = "0";
+            document.getElementById('lastUpdate').innerText = "...";
+            monitorarOnibus(novaLinhaId);
+        }
+
+        function monitorarOnibus(id) {
+            currentRef = database.ref('frota/' + id);
+            currentRef.on('value', (snapshot) => {
+                document.getElementById('loading').style.opacity = 0;
+                setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
+                
+                const data = snapshot.val();
+                if (data) {
+                    const lat = parseFloat(data.lat);
+                    const lng = parseFloat(data.lng);
+                    const speed = data.velocidade;
+                    const lastUpdate = Math.floor((Date.now() - data.ultimaAtualizacao) / 1000);
+                    const newLatLng = [lat, lng];
+
+                    if (!busMarker) {
+                        busMarker = L.marker(newLatLng, {icon: busIcon}).addTo(map);
+                        map.panTo(newLatLng);
+                    } else {
+                        busMarker.setLatLng(newLatLng);
+                    }
+                    document.getElementById('speedVal').innerText = speed;
+                    document.getElementById('lastUpdate').innerText = lastUpdate;
+                }
+            });
+        }
+        mudarLinha();
+    </script>
+</body>
+</html>
