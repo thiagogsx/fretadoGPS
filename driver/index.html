@@ -48,8 +48,6 @@
             border: none; border-radius: 50px; cursor: pointer; width: 100%;
         }
         button.stop { background-color: var(--danger-color); color: white; }
-        
-        /* NOVO: Aviso de Segurança */
         .warning-msg {
             background-color: rgba(255, 68, 68, 0.15);
             border: 1px solid var(--danger-color);
@@ -58,21 +56,20 @@
             border-radius: 8px;
             font-size: 0.9rem;
             margin-top: 15px;
-            display: none; /* Aparece só quando inicia */
+            display: none;
         }
         .warning-icon { margin-right: 5px; font-weight: bold; }
-
     </style>
 </head>
 <body>
     <div class="card">
         <h1>Painel do Motorista</h1>
-        <p>Selecione sua rota:</p>
+        <p>Selecione a rota:</p>
         
         <select id="busId">
-            <option value="linha_jundiai">Linha Jundiaí</option>
-            <option value="linha_barra_funda">Linha Barra Funda</option>
-            <option value="linha_campo_limpo">Campo Limpo Paulista</option>
+            <option value="linha1">Linha 1: Jundiaí/ Várzea/ Campo Limpo</option>
+            <option value="linha2">Linha 2: São Paulo (Barra Funda)</option>
+            <option value="linha3">Linha 3: Francisco Morato</option>
         </select>
 
         <div id="statusBox" class="status-box">
@@ -85,7 +82,7 @@
 
         <div id="warningBox" class="warning-msg">
             <span class="warning-icon">⚠️</span> 
-            ATENÇÃO: Mantenha esta tela aberta e o celular no painel para o GPS funcionar.
+            ATENÇÃO: Mantenha esta tela aberta e o celular no painel.
         </div>
     </div>
 
@@ -93,7 +90,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <script>
-        // --- SUAS CHAVES (Mantenha as mesmas que já funcionam) ---
+        // MANTENHA SUAS CHAVES AQUI
         const firebaseConfig = {
           apiKey: "AIzaSyBFCEI_QYYWA7U4fEt0f6H0CYJMTVdVxlo",
           authDomain: "fretado-27e4a.firebaseapp.com",
@@ -119,7 +116,6 @@
         const busSelector = document.getElementById('busId');
         const warningBox = document.getElementById('warningBox');
 
-        // Função Wake Lock (Trava Tela) Reforçada
         async function requestWakeLock() {
             try {
                 wakeLock = await navigator.wakeLock.request('screen');
@@ -129,22 +125,18 @@
 
         async function toggleTracking() {
             if (!isTracking) {
-                // INICIAR
                 startGPS();
                 await requestWakeLock();
-                
                 isTracking = true;
                 actionBtn.textContent = "ENCERRAR VIAGEM";
                 actionBtn.classList.add('stop');
                 statusBox.classList.add('active');
                 statusText.textContent = "Transmitindo GPS...";
                 busSelector.disabled = true;
-                warningBox.style.display = "block"; // Mostra o aviso
+                warningBox.style.display = "block";
             } else {
-                // PARAR
                 navigator.geolocation.clearWatch(watchId);
                 if (wakeLock) wakeLock.release();
-                
                 isTracking = false;
                 actionBtn.textContent = "INICIAR VIAGEM";
                 actionBtn.classList.remove('stop');
@@ -152,7 +144,7 @@
                 statusText.textContent = "Viagem encerrada.";
                 speedDisplay.textContent = "0";
                 busSelector.disabled = false;
-                warningBox.style.display = "none"; // Esconde o aviso
+                warningBox.style.display = "none";
             }
         }
 
@@ -163,19 +155,15 @@
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
                     const speed = position.coords.speed ? (position.coords.speed * 3.6).toFixed(0) : 0;
-                    
                     speedDisplay.textContent = speed;
-                    
                     database.ref('frota/' + busSelector.value).set({
-                        lat: lat, lng: lng, velocidade: parseInt(speed),
-                        ultimaAtualizacao: Date.now()
+                        lat: lat, lng: lng, velocidade: parseInt(speed), ultimaAtualizacao: Date.now()
                     });
                 },
                 (err) => console.log(err),
                 { enableHighAccuracy: true, timeout: 5000 }
             );
         }
-        
         document.addEventListener('visibilitychange', async () => {
             if (wakeLock !== null && document.visibilityState === 'visible') await requestWakeLock();
         });
