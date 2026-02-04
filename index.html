@@ -22,20 +22,22 @@
             background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23E1F000'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
             background-repeat: no-repeat; background-position: right 15px center; background-size: 20px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.5); outline: none;
-            text-overflow: ellipsis; /* Corta texto muito longo */
+            text-overflow: ellipsis; 
         }
         .info-card {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             width: 90%; max-width: 400px; background-color: var(--card-bg); color: white;
             padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
             display: flex; align-items: center; justify-content: space-between;
-            border-bottom: 4px solid var(--brand-color); z-index: 1000;
+            border-bottom: 4px solid #666; /* Começa cinza */
+            z-index: 1000; transition: border-color 0.3s;
         }
         .bus-info h2 { margin: 0; font-size: 1.2rem; }
         .bus-info p { margin: 5px 0 0; color: #aaa; font-size: 0.9rem; }
         .status-badge {
-            background-color: var(--brand-color); color: black; padding: 5px 10px;
+            background-color: #666; color: black; padding: 5px 10px;
             border-radius: 20px; font-weight: bold; font-size: 0.8rem; text-transform: uppercase;
+            transition: background-color 0.3s;
         }
         .loading-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -45,6 +47,10 @@
         }
         .bus-icon-marker { background: transparent; border: none; }
         .bus-svg { filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.5)); transition: transform 0.5s linear; }
+        
+        /* Classes para status */
+        .online-border { border-color: var(--brand-color) !important; }
+        .offline-border { border-color: #666 !important; }
     </style>
 </head>
 <body>
@@ -60,13 +66,13 @@
 
     <div id="map"></div>
 
-    <div class="info-card">
+    <div id="infoCard" class="info-card offline-border">
         <div class="bus-info">
             <h2 id="busTitle">Linha 1</h2>
             <p>Velocidade: <span id="speedVal" style="color:white; font-weight:bold;">0</span> km/h</p>
             <p style="font-size: 0.75rem; color: #777;">Atualizado há: <span id="lastUpdate">...</span>s</p>
         </div>
-        <div class="status-badge">ONLINE</div>
+        <div id="statusBadge" class="status-badge">OFFLINE</div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -88,9 +94,7 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        // Mapa centralizado (ajustado para visão geral)
         const map = L.map('map', { zoomControl: false }).setView([-23.1857, -46.8978], 12);
-        
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
         }).addTo(map);
@@ -101,21 +105,39 @@
         let busMarker = null;
         let currentRef = null;
 
+        // Elementos UI
+        const statusBadge = document.getElementById('statusBadge');
+        const infoCard = document.getElementById('infoCard');
+        const speedVal = document.getElementById('speedVal');
+        const lastUpdateVal = document.getElementById('lastUpdate');
+
         function mudarLinha() {
             const selector = document.getElementById('lineSelector');
             const novaLinhaId = selector.value;
             const nomeLinha = selector.options[selector.selectedIndex].text;
-
-            // Pega apenas "Linha 1", "Linha 2" para o título (corta antes dos dois pontos)
             document.getElementById('busTitle').innerText = nomeLinha.split(":")[0]; 
 
             if (currentRef) currentRef.off();
             if (busMarker) { map.removeLayer(busMarker); busMarker = null; }
             
-            document.getElementById('speedVal').innerText = "0";
-            document.getElementById('lastUpdate').innerText = "...";
-            
+            // Reseta visual para Offline
+            setOffline();
             monitorarOnibus(novaLinhaId);
+        }
+
+        function setOffline() {
+            statusBadge.textContent = "OFFLINE";
+            statusBadge.style.backgroundColor = "#666"; // Cinza
+            infoCard.classList.remove('online-border');
+            infoCard.classList.add('offline-border');
+            speedVal.textContent = "0";
+        }
+
+        function setOnline() {
+            statusBadge.textContent = "ONLINE";
+            statusBadge.style.backgroundColor = "#E1F000"; // Lime
+            infoCard.classList.add('online-border');
+            infoCard.classList.remove('offline-border');
         }
 
         function monitorarOnibus(id) {
@@ -125,13 +147,23 @@
                 setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
                 
                 const data = snapshot.val();
-                if (data) {
+                
+                if (data && data.lat && data.lng) {
                     const lat = parseFloat(data.lat);
                     const lng = parseFloat(data.lng);
                     const speed = data.velocidade;
-                    const lastUpdate = Math.floor((Date.now() - data.ultimaAtualizacao) / 1000);
-                    const newLatLng = [lat, lng];
+                    
+                    // Lógica de tempo: Se mais de 30s sem sinal, considera Offline
+                    const secondsAgo = Math.floor((Date.now() - data.ultimaAtualizacao) / 1000);
+                    
+                    // Verifica status explícito OU tempo limite (30s)
+                    if (data.status === 'offline' || secondsAgo > 30) {
+                        setOffline();
+                    } else {
+                        setOnline();
+                    }
 
+                    const newLatLng = [lat, lng];
                     if (!busMarker) {
                         busMarker = L.marker(newLatLng, {icon: busIcon}).addTo(map);
                     } else {
@@ -139,8 +171,10 @@
                     }
                     map.panTo(newLatLng); 
 
-                    document.getElementById('speedVal').innerText = speed;
-                    document.getElementById('lastUpdate').innerText = lastUpdate;
+                    speedVal.innerText = speed;
+                    lastUpdateVal.innerText = secondsAgo;
+                } else {
+                    setOffline();
                 }
             });
         }
