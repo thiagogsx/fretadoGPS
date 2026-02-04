@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Innomotics - Fretado (OSM)</title>
+    <title>Innomotics - Passageiro</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <style>
@@ -48,17 +48,20 @@
 </head>
 <body>
     <div id="loading" class="loading-overlay">CARREGANDO MAPA...</div>
+    
     <div class="top-bar">
         <select id="lineSelector" onchange="mudarLinha()">
-            <option value="fretado01">Rota 01 - Fábrica Jundiaí</option>
-            <option value="fretado02">Rota 02 - Centro</option>
-            <option value="fretado03">Rota 03 - Várzea</option>
+            <option value="linha_jundiai">Linha Jundiaí</option>
+            <option value="linha_barra_funda">Linha Barra Funda</option>
+            <option value="linha_campo_limpo">Campo Limpo Paulista</option>
         </select>
     </div>
+
     <div id="map"></div>
+
     <div class="info-card">
         <div class="bus-info">
-            <h2 id="busTitle">Fretado 01</h2>
+            <h2 id="busTitle">Linha Jundiaí</h2>
             <p>Velocidade: <span id="speedVal" style="color:white; font-weight:bold;">0</span> km/h</p>
             <p style="font-size: 0.75rem; color: #777;">Atualizado há: <span id="lastUpdate">...</span>s</p>
         </div>
@@ -70,7 +73,6 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <script>
-        // --- SUAS CHAVES ATUALIZADAS ---
         const firebaseConfig = {
           apiKey: "AIzaSyBFCEI_QYYWA7U4fEt0f6H0CYJMTVdVxlo",
           authDomain: "fretado-27e4a.firebaseapp.com",
@@ -85,7 +87,9 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
+        // Inicia o mapa centralizado em SP (Jundiaí)
         const map = L.map('map', { zoomControl: false }).setView([-23.1857, -46.8978], 14);
+        
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
         }).addTo(map);
@@ -101,11 +105,15 @@
             const novaLinhaId = selector.value;
             const nomeLinha = selector.options[selector.selectedIndex].text;
 
-            document.getElementById('busTitle').innerText = nomeLinha.split(" - ")[0];
+            document.getElementById('busTitle').innerText = nomeLinha; // Atualiza título do card
+
             if (currentRef) currentRef.off();
             if (busMarker) { map.removeLayer(busMarker); busMarker = null; }
+            
+            // Zera informações
             document.getElementById('speedVal').innerText = "0";
             document.getElementById('lastUpdate').innerText = "...";
+            
             monitorarOnibus(novaLinhaId);
         }
 
@@ -125,15 +133,20 @@
 
                     if (!busMarker) {
                         busMarker = L.marker(newLatLng, {icon: busIcon}).addTo(map);
-                        map.panTo(newLatLng);
                     } else {
                         busMarker.setLatLng(newLatLng);
                     }
+
+                    // --- 2. FORÇA CENTRALIZAÇÃO DO MAPA SEMPRE ---
+                    map.panTo(newLatLng); 
+
                     document.getElementById('speedVal').innerText = speed;
                     document.getElementById('lastUpdate').innerText = lastUpdate;
                 }
             });
         }
+        
+        // Inicia
         mudarLinha();
     </script>
 </body>
