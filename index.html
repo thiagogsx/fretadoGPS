@@ -82,7 +82,7 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
-        // Centraliza inicialmente em SP
+        // Centraliza em SP
         const map = L.map('map', { zoomControl: false }).setView([-23.35, -46.80], 10);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
@@ -91,41 +91,38 @@
         const busSvgHtml = `<svg class="bus-svg" width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 16C4 16.88 4.39 17.67 5 18.22V20C5 20.55 5.45 21 6 21H7C7.55 21 8 20.55 8 20V19H16V20C16 20.55 16.45 21 17 21H18C18.55 21 19 20.55 19 20V18.22C19.61 17.67 20 16.88 20 16V6C20 2.5 16.42 2 12 2C7.58 2 4 2.5 4 6V16ZM7.5 17C6.67 17 6 16.33 6 15.5C6 14.67 6.67 14 7.5 14C8.33 14 9 14.67 9 15.5C9 16.33 8.33 17 7.5 17ZM16.5 17C15.67 17 15 16.33 15 15.5C15 14.67 15.67 14 16.5 14C17.33 14 18 14.67 18 15.5C18 16.33 17.33 17 16.5 17ZM5 6H19V11H5V6Z" fill="#E1F000"/></svg>`;
         const busIcon = L.divIcon({ className: 'bus-icon-marker', html: busSvgHtml, iconSize: [40, 40], iconAnchor: [20, 20] });
         
-        // --- DEFINIÇÃO DOS PONTOS EXATOS DA ROTA (LATITUDE, LONGITUDE) ---
-        // Converti a lista de ruas que você mandou em coordenadas sequenciais
+        // --- ROTA FIXA: BARRA FUNDA ---
         const rotaBarraFundaPoints = [
-            [-23.524433, -46.666636], // 1. Terminal Barra Funda (Av. Mario de Andrade)
-            [-23.526200, -46.668000], // 2. Av Auro Soares de Moura Andrade
-            [-23.528500, -46.670500], // 3. Av Francisco Matarazzo
-            [-23.524000, -46.678000], // 4. Rua Carlos Vicari
-            [-23.521000, -46.685000], // 5. Praça dos Inconfidentes
-            [-23.520000, -46.690000], // 6. Rua Guaicurus
-            [-23.518000, -46.695000], // 7. Viaduto Elias Nagib Breim
-            [-23.515000, -46.700000], // 8. Praça Jácomo Zanella
-            [-23.510000, -46.710000], // 9. Av Ermano Marchetti
-            [-23.507000, -46.720000], // 10. Ponte do Piqueri
-            [-23.505000, -46.725000], // 11. Marginal Tietê (Acesso)
-            [-23.490000, -46.740000], // 12. Início Anhanguera
-            [-23.400000, -46.790000], // 12. Anhanguera (Meio - Cajamar)
-            [-23.230000, -46.900000], // 12. Anhanguera (Chegando Jundiai)
-            [-23.210000, -46.950000], // 13. Rodovia Dom Gabriel
-            [-23.190000, -46.970000], // 14. Rodovia Hermenegildo Tonoli
-            [-23.175000, -46.990000], // 15. Av Jose Alves de Oliveira
-            [-23.165000, -46.995000], // 16. Rua Fortunato Garcia Braga
-            [-23.163848, -46.999899]  // 17. DESTINO FINAL (Innomotics)
+            [-23.524433, -46.666636], // 1. Terminal Barra Funda
+            [-23.526200, -46.668000], 
+            [-23.528500, -46.670500], // Av Francisco Matarazzo
+            [-23.524000, -46.678000], // R. Carlos Vicari
+            [-23.521000, -46.685000], 
+            [-23.520000, -46.690000], // R. Guaicurus
+            [-23.518000, -46.695000], 
+            [-23.515000, -46.700000], 
+            [-23.510000, -46.710000], // Av Ermano Marchetti
+            [-23.507000, -46.720000], // Pte Piqueri
+            [-23.505000, -46.725000], // Marginal
+            [-23.490000, -46.740000], // Anhanguera Ini
+            [-23.400000, -46.790000], // Anhanguera Meio
+            [-23.230000, -46.900000], // Anhanguera Fim
+            [-23.210000, -46.950000], // D. Gabriel
+            [-23.190000, -46.970000], // Hermenegildo
+            [-23.175000, -46.990000], // Av Jose Alves
+            [-23.165000, -46.995000], 
+            [-23.163848, -46.999899]  // DESTINO
         ];
 
         const rotasFixas = {
-            "linha2": rotaBarraFundaPoints, // Desenha apenas para Linha 2
-            "linha1": [], // Vazio (Sem rastro)
-            "linha3": []  // Vazio (Sem rastro)
+            "linha2": rotaBarraFundaPoints, // Única com desenho
+            "linha1": [], 
+            "linha3": [] 
         };
         
         let busMarker = null;
         let currentRef = null;
         let rotaPolyline = null; 
-        let tracePolyline = null;
-        let tracePath = []; 
 
         const statusBadge = document.getElementById('statusBadge');
         const infoCard = document.getElementById('infoCard');
@@ -141,24 +138,16 @@
             if (currentRef) currentRef.off();
             if (busMarker) { map.removeLayer(busMarker); busMarker = null; }
             if (rotaPolyline) { map.removeLayer(rotaPolyline); rotaPolyline = null; }
-            if (tracePolyline) { map.removeLayer(tracePolyline); tracePolyline = null; }
-            tracePath = []; 
 
-            // DESENHA ROTA SE TIVER DADOS (Apenas Linha 2)
+            // DESENHA ROTA SE TIVER DADOS (Cor Innomotics #E1F000)
             if (rotasFixas[novaLinhaId] && rotasFixas[novaLinhaId].length > 0) {
                 rotaPolyline = L.polyline(rotasFixas[novaLinhaId], {
-                    color: '#E1F000', // COR DO RASTRO/ROTA (LIME)
-                    weight: 5,        // Espessura
-                    opacity: 0.7,     // Levemente transparente
-                    dashArray: '10, 10' // Tracejado para indicar "caminho a percorrer"
+                    color: '#E1F000', 
+                    weight: 5,        
+                    opacity: 0.8
                 }).addTo(map);
                 map.fitBounds(rotaPolyline.getBounds(), {padding: [50, 50]});
             }
-
-            // Prepara a linha do rastro ao vivo (histórico)
-            tracePolyline = L.polyline([], {
-                color: '#E1F000', weight: 5, opacity: 1
-            }).addTo(map);
             
             setOffline();
             monitorarOnibus(novaLinhaId);
@@ -194,11 +183,8 @@
                     if (!busMarker) busMarker = L.marker(newLatLng, {icon: busIcon}).addTo(map);
                     else busMarker.setLatLng(newLatLng);
                     
-                    if (secondsAgo <= 30) {
-                        tracePath.push(newLatLng);
-                        tracePolyline.setLatLngs(tracePath);
-                    }
-                    map.panTo(newLatLng); 
+                    map.panTo(newLatLng); // Segue o ônibus
+                    
                     speedVal.innerText = speed;
                     lastUpdateVal.innerText = secondsAgo;
                 } else setOffline();
